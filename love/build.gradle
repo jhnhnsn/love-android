@@ -10,9 +10,9 @@ android {
     ndkVersion '25.2.9519653'
 
     defaultConfig {
-        minSdk 16
-        compileSdk 34
-        targetSdk 34
+        minSdk 21
+        compileSdk 35
+        targetSdk 35
         externalNativeBuild {
             ndkBuild {
                 arguments "-j" + Runtime.runtime.availableProcessors()

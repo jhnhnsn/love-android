@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Share files from the app's internal files/save directory -->
+    <files-path name="save" path="save/" />
+    <!-- Share files from the app's internal files directory -->
+    <files-path name="files" path="." />
+    <!-- Share files from cache directory -->
+    <cache-path name="cache" path="." />
+</paths>

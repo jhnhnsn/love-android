@@ -2,6 +2,20 @@ import java.nio.charset.StandardCharsets
 
 apply plugin: 'com.android.application'
 
+// Load signing config from local.properties (not tracked by git)
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localProperties.load(new FileInputStream(localPropertiesFile))
+}
+
+// Helper to get signing property from local.properties, gradle.properties, or environment
+def getSigningProperty = { String name ->
+    return localProperties.getProperty(name) ?:
+           project.properties[name] ?:
+           System.getenv(name.replace('.', '_').toUpperCase())
+}
+
 android {
     namespace "org.love2d.android.executable"
     ndkVersion '25.2.9519653'
@@ -10,9 +24,9 @@ android {
         applicationId project.properties["app.application_id"]
         versionCode project.properties["app.version_code"].toInteger()
         versionName project.properties["app.version_name"]
-        minSdk 16
-        compileSdk 34
-        targetSdk 34
+        minSdk 21
+        compileSdk 35
+        targetSdk 35
         
         def getAppName = {
             def nameArray = project.properties["app.name_byte_array"]
@@ -38,10 +52,25 @@ android {
             ORIENTATION:project.properties["app.orientation"],
         ]
     }
+    signingConfigs {
+        release {
+            def keystorePath = getSigningProperty("app.signing.key.store")
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storePassword getSigningProperty("app.signing.key.store.password")
+                keyAlias getSigningProperty("app.signing.key.alias")
+                keyPassword getSigningProperty("app.signing.key.alias.password")
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            def keystorePath = getSigningProperty("app.signing.key.store")
+            if (keystorePath) {
+                signingConfig signingConfigs.release
+            }
         }
     }
     flavorDimensions = ['mode', 'recording']

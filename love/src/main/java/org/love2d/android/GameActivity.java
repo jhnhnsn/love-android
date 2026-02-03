@@ -44,6 +44,8 @@ import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.Vibrator;
 import android.util.Log;
 import android.util.DisplayMetrics;
@@ -57,6 +59,8 @@ public class GameActivity extends SDLActivity {
     private static DisplayMetrics metrics = null;
     private static String gamePath = "";
     private static Vibrator vibrator = null;
+    private static Handler shareCheckHandler = null;
+    private static final int SHARE_CHECK_INTERVAL_MS = 500; // Check every 500ms
     protected final int[] externalStorageRequestDummy = new int[1];
     protected final int[] recordAudioRequestDummy = new int[1];
     public static final int EXTERNAL_STORAGE_REQUEST_CODE = 2;
@@ -114,6 +118,7 @@ public class GameActivity extends SDLActivity {
         gamePath = "";
         storagePermissionUnnecessary = false;
         embed = getResources().getBoolean(R.bool.embed);
+        needToCopyGameInArchive = embed;
 
         if (!embed) {
             handleIntent(getIntent());
@@ -130,7 +135,34 @@ public class GameActivity extends SDLActivity {
             getWindow().getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER;
             shortEdgesMode = false;
         }
+
+        // Set up periodic check for share requests from Lua
+        startShareCheckHandler();
     }
+
+    private void startShareCheckHandler() {
+        if (shareCheckHandler == null) {
+            shareCheckHandler = new Handler(Looper.getMainLooper());
+        }
+        shareCheckHandler.postDelayed(shareCheckRunnable, SHARE_CHECK_INTERVAL_MS);
+    }
+
+    private void stopShareCheckHandler() {
+        if (shareCheckHandler != null) {
+            shareCheckHandler.removeCallbacks(shareCheckRunnable);
+        }
+    }
+
+    private final Runnable shareCheckRunnable = new Runnable() {
+        @Override
+        public void run() {
+            checkShareRequest();
+            // Schedule next check
+            if (shareCheckHandler != null) {
+                shareCheckHandler.postDelayed(this, SHARE_CHECK_INTERVAL_MS);
+            }
+        }
+    };
 
     @Override
     protected void onNewIntent(Intent intent) {
@@ -257,6 +289,7 @@ public class GameActivity extends SDLActivity {
 
     @Override
     protected void onDestroy() {
+        stopShareCheckHandler();
         if (vibrator != null) {
             Log.d("GameActivity", "Cancelling vibration");
             vibrator.cancel();
@@ -640,6 +673,96 @@ public class GameActivity extends SDLActivity {
             }
 
             return applicationInfo.sourceDir + "!/lib/" + abi + "/?.so";
+        }
+    }
+
+    /**
+     * Share an image file using Android's share intent.
+     * Called from native code when user wants to share a screenshot.
+     *
+     * @param filePath Path to the image file to share
+     * @param message Text message to include with the share
+     * @return true if share intent was launched successfully
+     */
+    @Keep
+    public static boolean shareImage(String filePath, String message) {
+        GameActivity self = (GameActivity) mSingleton;
+        if (self == null) {
+            Log.e("GameActivity", "shareImage: mSingleton is null");
+            return false;
+        }
+
+        try {
+            File file = new File(filePath);
+            if (!file.exists()) {
+                Log.e("GameActivity", "shareImage: file does not exist: " + filePath);
+                return false;
+            }
+
+            Uri contentUri;
+            if (android.os.Build.VERSION.SDK_INT >= 24) {
+                // Use FileProvider for Android 7+
+                contentUri = androidx.core.content.FileProvider.getUriForFile(
+                    self,
+                    self.getPackageName() + ".fileprovider",
+                    file
+                );
+            } else {
+                contentUri = Uri.fromFile(file);
+            }
+
+            Intent shareIntent = new Intent(Intent.ACTION_SEND);
+            shareIntent.setType("image/png");
+            shareIntent.putExtra(Intent.EXTRA_STREAM, contentUri);
+            if (message != null && !message.isEmpty()) {
+                shareIntent.putExtra(Intent.EXTRA_TEXT, message);
+            }
+            shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+            self.startActivity(Intent.createChooser(shareIntent, "Share Screenshot"));
+            return true;
+        } catch (Exception e) {
+            Log.e("GameActivity", "shareImage failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Check for share requests from Lua.
+     * Lua writes a file "share_request.txt" with the image path and message.
+     * This method is called periodically to check for such requests.
+     */
+    @Keep
+    public static void checkShareRequest() {
+        GameActivity self = (GameActivity) mSingleton;
+        if (self == null) return;
+
+        try {
+            File saveDir = new File(self.getFilesDir(), "save");
+            File requestFile = new File(saveDir, "share_request.txt");
+
+            if (requestFile.exists()) {
+                java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.FileReader(requestFile)
+                );
+                String imagePath = reader.readLine();
+                String message = reader.readLine();
+                reader.close();
+
+                // Delete the request file
+                requestFile.delete();
+
+                if (imagePath != null && !imagePath.isEmpty()) {
+                    // Make the path absolute if it's relative
+                    File imageFile = new File(imagePath);
+                    if (!imageFile.isAbsolute()) {
+                        imageFile = new File(saveDir, imagePath);
+                    }
+                    shareImage(imageFile.getAbsolutePath(), message);
+                }
+            }
+        } catch (Exception e) {
+            Log.e("GameActivity", "checkShareRequest failed: " + e.getMessage());
         }
     }
 }
