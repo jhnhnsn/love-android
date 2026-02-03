@@ -33,5 +33,5 @@ build
 app/src/main/assets/game.love
 
 # Signing keys - DO NOT COMMIT
-#*.keystore
-#*.jks
+*.keystore
+*.jks
