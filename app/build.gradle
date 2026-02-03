@@ -55,11 +55,14 @@ android {
     signingConfigs {
         release {
             def keystorePath = getSigningProperty("app.signing.key.store")
-            if (keystorePath) {
+            def storePass = getSigningProperty("app.signing.key.store.password")
+            def alias = getSigningProperty("app.signing.key.alias")
+            def keyPass = getSigningProperty("app.signing.key.alias.password")
+            if (keystorePath && storePass && alias && keyPass) {
                 storeFile file(keystorePath)
-                storePassword getSigningProperty("app.signing.key.store.password")
-                keyAlias getSigningProperty("app.signing.key.alias")
-                keyPassword getSigningProperty("app.signing.key.alias.password")
+                storePassword storePass
+                keyAlias alias
+                keyPassword keyPass
             }
         }
     }
@@ -68,7 +71,10 @@ android {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             def keystorePath = getSigningProperty("app.signing.key.store")
-            if (keystorePath) {
+            def storePass = getSigningProperty("app.signing.key.store.password")
+            def alias = getSigningProperty("app.signing.key.alias")
+            def keyPass = getSigningProperty("app.signing.key.alias.password")
+            if (keystorePath && storePass && alias && keyPass) {
                 signingConfig signingConfigs.release
             }
         }
